@@ -1,0 +1,2 @@
+echo Please install the comipler in c:\MVS9
+chmod +x $1; cmd /C "$1"

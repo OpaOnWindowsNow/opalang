@@ -1,0 +1,6 @@
+VER="2009"
+CVER=$VER
+FILE="vcsetup.exe"
+SITE="http://download.microsoft.com/download/5/7/0/570d16e0-7a9e-4c34-928a-baca0ecec8a1/vcsetup.exe"
+EXTRACT="echo"
+DEPLOY="./deploy_vs_cpp $FILE"

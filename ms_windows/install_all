@@ -1,0 +1,15 @@
+#! /usr/bin/bash -ex
+LOG=all.log
+rm -f $LOG
+
+./install_gen pkg_flexdll
+echo flexdll ok > $LOG
+
+./install_gen pkg_nasm
+echo nasm ok
+
+./install_gen pkg_libssl
+echo libssl ok > $LOG
+
+./install_gen pkg_zlib
+echo zlib ok > $LOG

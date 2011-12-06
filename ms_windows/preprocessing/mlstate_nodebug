@@ -1,0 +1,8 @@
+#!/bin/bash -e
+# -*- encoding : unix -*-
+# We have to remove mysterious non scannable chars in windows !!!
+FILEUNIX=$(echo $1 | sed -e "s/[^0-9a-zA-Z\._/: -]//g") # because it can came from outerspace (windows)
+FILE=$FILEUNIX #(cygpath -w $FILEUNIX) # and return
+../utils/ppdebug.pl -r "$FILE" | tee "$FILE.pp"
+#echo "#1 \"$FILE\"" | tee $FILE.pp
+#sed -ue "s/#<<.*>>#;\?/ /g ; s/#<>.*/ /g" $FILE | tee $FILE.pp

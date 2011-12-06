@@ -1,0 +1,2 @@
+echo This will install NSIS, you can refuse
+cmd /C "$1"

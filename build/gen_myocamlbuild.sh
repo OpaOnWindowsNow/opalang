@@ -122,6 +122,7 @@ mkdir -p $BUILD_DIR
 OCAMLBUILD_LIB=$($OCAMLBUILD -where)
 
 cp $CONFIG_ML ${CONFIG_ML}i $BUILD_DIR
+[ "$IS_WINDOWS" ] && unset OCAMLLIB # prevent windows installation to bypass cygwin one
 if [ "${BYTECODE:-}" ]; then
     cd $BUILD_DIR
     OCAMLC=${OCAMLOPT/ocamlopt/ocamlc}

@@ -16,6 +16,7 @@
     along with OPA. If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "libbase/mlstate_platform.h"
 #include <caml/memory.h>
 
 #if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__) || defined(__FreeBSD_kernel__) /* MAC */
@@ -38,7 +39,16 @@ int get_mem (unsigned int *rss)
     return 0;
 }
 
-#else /* not MAC */
+#else  // elseif not working
+#ifdef MLSTATE_WINDOWS)
+
+int get_mem (unsigned int *rss){
+  assert(0);
+  *rss = 0;
+  return 0;
+}
+
+#else  /* not (MAC or Windows) */
 
 #include <stdio.h>
 #include <unistd.h>
@@ -55,6 +65,7 @@ int get_mem (unsigned int *rss)
     return 0;
 }
 
+#endif
 #endif
 
 long usage() {

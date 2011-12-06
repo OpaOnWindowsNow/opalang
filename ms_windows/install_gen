@@ -1,0 +1,57 @@
+#! /bin/sh -ex
+PKG=$1
+LOG=$1.log
+source $PKG
+
+echo $VER $CVER $FILE $REP $SITE
+
+echo Fetch
+wget --timestamping "$SITE$FILE"
+
+echo Extract
+if [ -n "$REP" ] && [ -n "$STDREP" ] ;
+then
+    rm -rf "$REP"
+fi
+$EXTRACT "$FILE"
+
+echo Install 
+if [ -n "$INST" ] && [ -e "$INST" ] && [ -n "$REP" ];
+then
+    cp "$INST" "$REP"
+fi
+
+if [ -n "$DEPLOY" ] && [ -e "$DEPLOY" ] && [ -n "$REP" ];
+then
+    cp "$DEPLOY" "$REP"
+fi
+
+if [ -n "$REP" ] && [ -n "$STDREP" ] ;
+then
+    rm -rf "$STDREP"
+    mv "$REP" "$STDREP"
+fi
+
+cd "$STDREP"
+
+echo Compile
+if [ -n "$INST" ];
+then
+    cmd /C "$INST"
+fi
+
+echo Deploy
+if [ -n "$INSTALLDIR" ];
+then
+    mkdir -p "$INSTALLDIR"
+fi
+
+if [ -n "$DEPLOY" ];
+then
+   export INSTALLDIR="$INSTALLDIR"
+   pwd
+   $DEPLOY
+fi
+
+cd ..
+

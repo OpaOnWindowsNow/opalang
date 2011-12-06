@@ -1,0 +1,6 @@
+VER="0.25"
+CVER=$VER
+FILE="flexdll-$VER-setup.exe"
+SITE="http://alain.frisch.fr/flexdll/"
+EXTRACT="echo"
+DEPLOY="./deploy_flexdll $FILE"

@@ -1,0 +1,12 @@
+VER="2.07"
+CVER=$VER
+FILE="nasm-$VER.tar.gz"
+REP="nasm-$VER"
+SITE="http://www.nasm.us/pub/nasm/releasebuilds/$VER/"
+STDREP="nasm"
+EXTRACT="tar xzvf"
+INSTALLDIR="/cygdrive/c/nasm"
+INST="make_nasm.bat"
+DEPLOY="./deploy_nasm"
+
+

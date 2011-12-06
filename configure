@@ -51,6 +51,15 @@ while [ $# -gt 0 ]; do
             shift
             OCAMLOPT=$1
             ;;
+	-win)
+	    if [ $# -lt 2 ]; then echo "Error: option $1 requires an argument" >&2; exit 1; fi
+	    shift
+	    OCAML_TARGET_DIR=$1
+	    WINTOOLS="$PWD/ms_windows"
+	    OCAMLOPT_TARGET=$WINTOOLS/windows_ocamlopt
+	    OCAMLC_TARGET=$WINTOOLS/windows_ocamlc
+	    OCAMLDEP_TARGET=$WINTOOLS/windows_ocamldep
+	    ;;
         -ocamlfind)
             if [ $# -lt 2 ]; then echo "Error: option $1 requires an argument" >&2; exit 1; fi
             shift
@@ -87,7 +96,24 @@ done
 : ${PREFIX:=/usr/local}
 : ${IS_RELEASE:=}
 
+
 CONFIG_LOG=$PWD/config.log
+debug() {
+    if [ -z "${CONFIGURE_DEBUG:-}" ];
+    then
+        echo -n "" >&2
+    else
+        echo -e "\nDEBUG.$@." >&2
+    fi
+}
+my_tail() {
+    if [ -z "${CONFIGURE_DEBUG:-}" ];
+    then
+        tail -n 5 "$1" | sed 's/^/	/'
+    else
+        cat "$1" | sed 's/^/	/'
+    fi
+}
 
 echo -n >$CONFIG_LOG
 
@@ -105,12 +131,16 @@ echo-check your OS
 EXT_LIB="a"
 EXT_OBJ="o"
 EXT_SHARED="so"
+EXT_EXE=""
 case $(uname) in
     CYGWIN*)
         echo-ok Windows/cygwin
         EXT_LIB="lib"
+        EXT_OBJ="obj"
         EXT_SHARED="dll"
-        IS_WINDOWS=1;;
+        WINDOWS_OSTRICH_MODE="WINDOWS : Ostrich mode, head in the sand (yes windows port is back to alpha stages)"
+        IS_WINDOWS=1
+        EXT_EXE=".exe";;
     Darwin*)
         echo-ok MacOS
         IS_MAC=1;;
@@ -194,6 +224,19 @@ else
     echo "Ocaml 3.12 or newer is required. It's usually found in package 'ocaml'."
     false
 fi
+: ${OCAMLC:=$(dirname $OCAMLOPT)/ocamlc}
+
+# check ocaml version and location for cross compilation
+echo-check ocamlopt_target
+if OCAMLOPT_TARGET=${OCAMLOPT_TARGET:-$(which ocamlopt.opt)} || OCAMLOPT_TARGET=$(which ocamlopt)
+then echo-ok $OCAMLOPT_TARGET
+else
+    echo-err Not found
+    echo "Ocaml 3.12 or newer is required. It's usually found in package 'ocaml'."
+    exit 1
+fi
+: ${OCAMLC_TARGET:=$(dirname $OCAMLOPT_TARGET)/ocamlc}
+: ${OCAMLDEP_TARGET:=$(dirname $OCAMLOPT_TARGET)/ocamldep}
 
 echo-check ocamlbuild
 : ${OCAMLBUILD:=$(dirname $OCAMLOPT)/ocamlbuild}
@@ -202,6 +245,31 @@ if [ -n "$IS_RELEASE" ]; then
 else
     OCAMLBUILD_FLAGS="${OCAMLBUILD_FLAGS:-} -tag debug"
 fi
+
+my_win_path(){
+    local WINPATH=$(tr ";" "\n" | grep "$1" | tr "\\\\" "/" | head -n 1)
+    if [ -z $WINPATH ];
+    then
+	echo-err No path about $1 has been found in your $2 environment variable.
+	false
+    else
+	cygpath -u $WINPATH
+    fi
+}
+
+
+
+
+if [ -n "$IS_WINDOWS" ]; then
+    OCAMLBUILD_FLAGS_TARGET="${OCAMLBUILD_FLAGS:-} -j 1 -ocamlc $WINTOOLS/windows_ocamlc -ocamlopt $WINTOOLS/windows_ocamlopt -ocamldep $WINTOOLS/windows_ocamldep"
+    OPENSSL_WINLIB=$(echo $LIB | my_win_path openssl LIB)
+    ZLIB_WINLIB=$(echo $LIB | my_win_path zlib LIB)
+    OPENSSL_WININCLUDE=$(echo $INCLUDE | my_win_path openssl INCLUDE)
+else
+    OCAMLBUILD_FLAGS_TARGET=""
+fi
+
+
 if [ -x "$OCAMLBUILD" ]
 then echo-ok $OCAMLBUILD
 else
@@ -210,11 +278,21 @@ else
     false
 fi
 
+# save ocamlbuild location to simplify cross-compilation
+OCAMLBUILD_WHERE=`$OCAMLBUILD -where`
+
 echo-check ocamldir
 : ${OCAMLLIB:=$($OCAMLOPT -where)}
 echo-ok $OCAMLLIB
 
-export OCAMLLIB
+echo-check ocamldir_target
+: ${OCAMLLIB_TARGET:=$($OCAMLOPT_TARGET -where | sed 's/\r//' )}
+echo-ok $OCAMLLIB_TARGET
+: ${OCAML_TARGET_DIR:=$(dirname $($OCAMLOPT_TARGET -where | sed 's/\r//' ))}
+
+
+OCAMLBUILDOPT="-ocamlopt $OCAMLOPT_TARGET -ocamlc $OCAMLC_TARGET -ocamldep $OCAMLDEP_TARGET"
+OCAMLBUILDENV="OCAMLLIB=$OCAMLLIB_TARGET"
 
 echo-check ocaml version
 OCAML_VERSION=$($OCAMLOPT -version)
@@ -232,8 +310,11 @@ fi
 echo-check your ocaml setup
 check-ocaml () {
     local DIR=$(mktemp -d /tmp/opa-configure.XXXXX)
-    trap "rm -rf /tmp/${DIR#/tmp/}" EXIT
+    trap "cd - ; rm -rf /tmp/${DIR#/tmp/}" EXIT
     cd $DIR
+    cat >myocamlbuild.ml <<EOF
+let _ = Printf.printf "My ocamlbuild.ml\n";;
+EOF
     cat >test.ml <<EOF
 let p = Unix.getpid()
 let _ = Printf.printf "%s, %s %dbit" Sys.ocaml_version Sys.os_type Sys.word_size
@@ -241,15 +322,14 @@ let _ =
   exit Sys.word_size
 EOF
 
-    echo "# $OCAMLBUILD $OCAMLBUILD_FLAGS -tag use_unix test.native" >> $CONFIG_LOG
-    R=0; $OCAMLBUILD $OCAMLBUILD_FLAGS -tag use_unix test.native >test.log 2>&1 || R=$?
 
-    cat test.log >> $CONFIG_LOG
+    echo "# $OCAMLBUILD $OCAMLBUILD_FLAGS -tag use_unix test.native" >> $CONFIG_LOG
+    R=0; $OCAMLBUILD $OCAMLBUILD_FLAGS -tag use_unix test.native >> $CONFIG_LOG 2>&1 || R=$?
 
     if [ $R -ne 0 ]; then
         echo-err "could not compile"
         echo "----------"
-        tail -n 5 test.log | sed 's/^/	/'
+        my_tail test.log
         echo "----------"
         echo "Your ocaml installation seems broken, please fix it"
         false
@@ -272,6 +352,7 @@ EOF
             echo "Your ocaml seems to be neither a 64bit or a 32bit version. Please install a native 64 bit package."
             false
     esac >&2
+    cd -
     rm -rf /tmp/${DIR#/tmp/}
     trap - EXIT
     cd "$OPA_SOURCE_DIR"
@@ -279,12 +360,12 @@ EOF
 check-ocaml
 
 echo-check for camlp4
-: ${CAMLP4O:=$(dirname $OCAMLOPT)/camlp4o}
-: ${CAMLP4ORF:=$(dirname $OCAMLOPT)/camlp4orf}
+: ${CAMLP4O:=$OCAML_TARGET_DIR/bin/camlp4o$EXT_EXE}
+: ${CAMLP4ORF:=$OCAML_TARGET_DIR/bin/camlp4orf$EXT_EXE}
 if [ -x "$CAMLP4O" ] && [ -x "$CAMLP4ORF" ]
 then echo-ok $CAMLP4O
 else
-    echo-err Not found
+    echo-err Not found "$CAMLP4O" "$CAMLP4ORF"
     echo "You need camlp4 to build this package. It is usually found in packages camlp4, camlp4-extra"
     false
 fi
@@ -336,12 +417,12 @@ fi
 check-c-lib () (
     local OPTIONAL=""
     if [ $1 = "-opt" ]; then OPTIONAL=1; shift; fi
-    local LIB=$1; shift
+    local LIBFILE=$1; shift
     [ $# -gt 0 ]
     local INCLUDES=("$@")
 
-    local LIBNAME=$(basename "$LIB")
-    local LIBDIR=$(dirname "$LIB")
+    local LIBNAME=$(basename "$LIBFILE" ".cmxa")
+    local LIBDIR=$(dirname "$LIBFILE")
     local INCLUDE_DIR
     for d in {"$OCAMLLIB/..","$OCAMLLIB",/usr/lib,/usr/local/lib}{/$LIBDIR,}; do
         if [ -e $d/lib$LIBNAME.a ]; then
@@ -363,7 +444,7 @@ check-c-lib () (
 
     # Now checking compile, link & run
     local DIR=$(mktemp -d /tmp/opa-configure.XXXXX)
-    trap "rm -rf /tmp/${DIR#/tmp/}" EXIT
+    trap "cd - ; rm -rf /tmp/${DIR#/tmp/}" EXIT
     cd $DIR
 
     {
@@ -419,13 +500,10 @@ fi
 #   custom check ; ensure consistency with function
 #   "get_ocamlfind_directory" in build/myocamlbuild_prefix.ml
 echo-check for ocamlfind
-if [ -n "${NO_OCAMLFIND:-}" ]; then
-    OCAMLFIND=
-    echo-skip Disabled
-elif  [ -z "${OCAMLFIND:-}" ]; then
-    OCAMLFIND=$(dirname $OCAMLOPT)/ocamlfind
-    if [ ! -x "$OCAMLFIND" ]; then
-        OCAMLFIND=$OCAMLLIB/../../bin/ocamlfind
+if [ -z "${NO_OCAMLFIND:-}" ] && [ -z "${OCAMLFIND:-}" ]; then
+    OCAMLFIND=`echo $OCAMLOPT_TARGET | sed 's/ocamlopt.opt/ocamlfind/' |  sed 's/ocamlopt/ocamlfind/'`
+    if [ ! -x "$OCAMLFIND" ]
+    then OCAMLFIND=$OCAMLLIB_TARGET/../../bin/ocamlfind
     fi
     if [ ! -x "$OCAMLFIND" ]; then
         echo-skip "Not found (but optional)"
@@ -444,57 +522,84 @@ fi
 EXTRA_TAGS="-tag use_unix"
 check-ocaml-lib () {
     local MODULE=$1; shift
-    local LIB=$1; shift
+    local LIBFILE=$1; shift
     local LIBDIR=$1; shift
     [ $# -eq 0 ]
 
     local DIR=$(mktemp -d /tmp/opa-configure.XXXXX)
     trap "rm -rf /tmp/${DIR#/tmp/}" EXIT
+
+    LIBNAME=$(basename "$LIBFILE" ".cmxa")
     cd $DIR
 
-    echo "module M = $MODULE" >check_${LIB}.ml
+    echo "module M = $MODULE" >check_${MODULE}.ml
 
     local libdir_ins=""
-    if [ "$LIBDIR" != "$OCAMLLIB" ]; then libdir_ins=' ~dir:"'$LIBDIR'"'; fi
+    if [ "$LIBDIR" != "$OCAMLLIB_TARGET" ]; then libdir_ins=' ~dir:"'$LIBDIR'"'; fi
     cat >myocamlbuild.ml <<EOF
 let _ = Ocamlbuild_plugin.dispatch (function
   | Ocamlbuild_plugin.After_rules ->
-      Ocamlbuild_plugin.ocaml_lib ~extern:true$libdir_ins ~tag_name:"use_my_lib" "$LIB"
+      Ocamlbuild_plugin.ocaml_lib ~extern:true$libdir_ins ~tag_name:"use_$LIBNAME" "$LIBNAME"
   | _ -> ()
-)
+) ;;
+let windows_mode =
+   $(if [ -n "${IS_WINDOWS:-}" ]; then echo true
+    else echo false
+    fi)
+;;
+open Ocamlbuild_plugin
+open Command
+let _ = (if windows_mode then (
+        (* windows primitives *)
+          flag ["ocaml"; "link"] (S [A "Gdi32.lib"; A "User32.lib"]);
+        (* dns *)
+          let flags = S[A"-ccopt";A"DnsAPI.Lib"] in
+          flag ["use_io";"link"] flags
+      ) )
+;;
 EOF
 
-    echo "# $OCAMLBUILD $OCAMLBUILD_FLAGS $EXTRA_TAGS -tag use_my_lib check_${LIB}.native" >> $CONFIG_LOG
-
-    R=0; $OCAMLBUILD $OCAMLBUILD_FLAGS $EXTRA_TAGS -tag use_my_lib check_${LIB}.native >check_${LIB}.log 2>&1 || R=$?
-    cat check_${LIB}.log >> $CONFIG_LOG
+    # BUILD MYOCAMLBUILD
+    $OCAMLBUILD $OCAMLBUILD_FLAGS >> $CONFIG_LOG 2>&1
+    # BUILD THE LIB USER
+    OCAMLBUILD="_build/myocamlbuild.exe"
+    R=0; $OCAMLBUILD $OCAMLBUILD_FLAGS_TARGET $EXTRA_TAGS -tag use_$LIBNAME check_${MODULE}.native > check_${MODULE}.log 2>&1 || R=$?
+    cat check_${MODULE}.log >> $CONFIG_LOG
 
     if [ $R -ne 0 ]; then
         echo-err "could not compile"
         echo "----------"
-        tail -n 5 check_${LIB}.log | sed 's/^/	/'
+        my_tail check_${MODULE}.log
         echo "----------"
-        echo "The installation of $LIB seems broken, please fix it (did it come with a different ocaml compiler ?)"
-        return 1
-    else
+
+        echo "The installation of $LIBFILE seems broken, please fix it (did it come with a different ocaml compiler ?)"
+        if [ -z "${IS_WINDOWS:-}" ];
+        then
+            return 1
+        else
+#	    return 1
+            echo $WINDOWS_OSTRICH_MODE
+        fi
+	else
         echo-ok-tag
     fi >&2
-    rm -rf /tmp/${DIR#/tmp/}
+    #rm -rf /tmp/${DIR#/tmp/}
     trap - EXIT
     cd "$OPA_SOURCE_DIR"
 }
 
 check-cmxa () {
     local DIR=$1; shift
+    local CANDS="$*"
     [ $# -gt 0 ]
     local canonical_name=$1
     while [ $# -gt 0 ] && [ ! -e "$DIR/$(basename $1).cmxa" ]; do shift; done
     if [ $# -eq 0 ]; then
         echo-err "Not found"
-        echo "Please fix your installation of $canonical_name in $LIBDIR: no proper cmxa file was found there." >&2
+        echo "Please fix your installation of $canonical_name in $LIBDIR of $CANDS: no proper cmxa file was found there." >&2
         return 1
     fi
-    echo $1
+    echo "$DIR/$(basename $1).cmxa"
 }
 
 locate-ocaml-lib () {
@@ -506,27 +611,29 @@ locate-ocaml-lib () {
     echo-check for $(basename $1)
 
     local LIBDIR=""
-    local LIB
+    local LIBFILE=""
     local LIB_NAMES=("$@")
     while [ $# -gt 0 ] && [ -z "$LIBDIR" ]; do
-        LIB=$(basename $1)
+        LIBFILE=$(basename $1)
         USUAL_DIR=$(dirname $1)
-        [ "$USUAL_DIR" = "." ] && USUAL_DIR=$LIB
+        [ "$USUAL_DIR" = "." ] && USUAL_DIR=$LIBFILE
         if [ -n "$OCAMLFIND" ] &&
-           LIBDIR=$("$OCAMLFIND" query "$LIB" 2>/dev/null)
+           LIBDIR=$("$OCAMLFIND" query "$LIBFILE" 2>/dev/null)
         then
-            LIB=$(check-cmxa $LIBDIR $LIB "${LIB_NAMES[@]}") || return 1
-            echo-ok -n "ocamlfind:$LIBDIR, "
-        elif [ -d "$OCAMLLIB"/"$USUAL_DIR" ]
+            LIBDIR=$(echo $LIBDIR | sed -e "s/\\\\/\//g")
+            LIBFILE=$(check-cmxa "$LIBDIR" "$LIBFILE" "${LIB_NAMES[@]}")
+            echo -n "[1mocamlfind:$LIBDIR[0m, " >&2
+        elif [ -d "$OCAMLLIB_TARGET"/"$USUAL_DIR" ]
         then
-            LIB=$(check-cmxa "$OCAMLLIB"/"$USUAL_DIR" $LIB "${LIB_NAMES[@]}") \
+            LIBFILE=$(check-cmxa "$OCAMLLIB_TARGET"/"$USUAL_DIR" "$LIBFILE" "${LIB_NAMES[@]}") \
                 || return 1
             echo-ok -n "+$USUAL_DIR, "
             LIBDIR=+"$USUAL_DIR"
-        elif [ -e "$OCAMLLIB"/"$LIB".cmxa ]
+        elif [ -e "$OCAMLLIB_TARGET"/"$LIBFILE".cmxa ]
         then
-            echo-ok -n "$LIB.cmxa, "
-            LIBDIR="$OCAMLLIB"
+            echo-ok -n "$LIBFILE.cmxa, "
+            LIBDIR="$OCAMLLIB_TARGET"
+            LIBFILE="$LIBFILE.cmxa"
         fi
         shift
     done
@@ -539,8 +646,9 @@ locate-ocaml-lib () {
         return 1
     fi
 
-    check-ocaml-lib "$MODULE" "$LIB" "$LIBDIR" || return 1
-    echo "$LIBDIR/$LIB"
+    check-ocaml-lib "$MODULE" "$LIBFILE" "$LIBDIR" || return 1
+    debug "$MODULE" "$LIBFILE" "$LIBDIR"
+    echo $LIBDIR/$(basename "$LIBFILE")
 }
 # for libs which are needed (fatal warning)
 LIBS_NOT_FOUND=()
@@ -602,8 +710,10 @@ fi
 
 dir_opt() {
     local DIR=$(dirname "$1"); shift; [ $# -eq 0 ]
-    if [ "$DIR" = "$OCAMLLIB" ]; then echo 'None'
-    else echo 'Some "'$DIR'"'
+    if [ "$DIR" = "$OCAMLLIB_TARGET" ]; then echo 'None'
+    else
+	DIR=$(cygpath -u $DIR)
+	echo 'Some "'$DIR'"'
     fi
 }
 
@@ -631,6 +741,8 @@ for tag in $ALL_TAGS_LIST; do
     hasvar=HAS_$(tr '[:lower:]' '[:upper:]' <<<"$tag")
     if [ -n "${!hasvar}" ]; then TAGS_LIST="$TAGS_LIST\"$tag\"; "; fi
 done
+
+CAMLZIP_NAME=$(basename "$CONFIG_LIB_CAMLZIP" ".cmxa")
 
 # See config.mli for the documentation and spec of these variables
 cat >config.ml <<EOF
@@ -668,7 +780,7 @@ let makebinary =
 module Libdir = struct
   let ssl = $(dir_opt "$CONFIG_LIB_OCAMLSSL")
   let cryptokit = $(dir_opt "$CONFIG_LIB_CRYPTOKIT")
-  let camlzip_name = "$(basename "$CONFIG_LIB_CAMLZIP")"
+  let camlzip_name = "$CAMLZIP_NAME"
   let camlzip = $(dir_opt "$CONFIG_LIB_CAMLZIP")
   let graph = $(dir_opt "$CONFIG_LIB_OCAMLGRAPH")
   let ulex = $(dir_opt "$CONFIG_LIB_ULEX")
@@ -680,14 +792,24 @@ let ext_shared = "$EXT_SHARED"
 
 EOF
 
+mydirname(){
+ if [ -n "${IS_LINUX:-}" ]; then dirname "$@"
+ else dirname $(cygpath -u "$@") 
+# else case "$@" in
+#   [+].*) dirname $(cygpath -u "$@") ;;
+#   *) dirname "$@" ;;
+#   esac
+  fi
+}
+
 cat >config.sh <<EOF
 PREFIX="$PREFIX"
 OCAMLLIB="$OCAMLLIB"
 OCAMLOPT="$OCAMLOPT"
 OCAMLBUILD="$OCAMLBUILD"
 OCAMLBUILD_FLAGS="$OCAMLBUILD_FLAGS"
-CAMLP4O="$CAMLP4O"
-CAMLP4ORF="$CAMLP4ORF"
+OCAMLBUILD_FLAGS_TARGET="$OCAMLBUILD_FLAGS_TARGET"
+OCAML_TARGET_DIR="$OCAML_TARGET_DIR"
 OCAML_WORD_SIZE="$OCAML_WORD_SIZE"
 
 HAS_CAMLIDL="$HAS_CAMLIDL"
@@ -709,16 +831,19 @@ OS=$(if [ -n "${IS_LINUX:-}" ]; then echo '"Linux"'
      else echo "Error: OS inconsistency" >&2; exit 2
      fi)
 
-LIB_OCAMLSSL_DIR="$(dirname "$CONFIG_LIB_OCAMLSSL")"
-LIB_CRYPTOKIT_DIR="$(dirname "$CONFIG_LIB_CRYPTOKIT")"
-LIB_CAMLZIP_NAME="$(basename "$CONFIG_LIB_CAMLZIP")"
-LIB_CAMLZIP_DIR="$(dirname "$CONFIG_LIB_CAMLZIP")"
-LIB_OCAMLGRAPH_DIR="$(dirname "$CONFIG_LIB_OCAMLGRAPH")"
-LIB_ULEX_DIR="$(dirname "$CONFIG_LIB_ULEX")"
+
+
+LIB_OCAMLSSL_DIR="$(mydirname "$CONFIG_LIB_OCAMLSSL")"
+LIB_CRYPTOKIT_DIR="$(mydirname "$CONFIG_LIB_CRYPTOKIT")"
+LIB_CAMLZIP_NAME="$CAMLZIP_NAME"
+LIB_CAMLZIP_DIR="$(mydirname "$CONFIG_LIB_CAMLZIP")"
+LIB_OCAMLGRAPH_DIR="$(mydirname "$CONFIG_LIB_OCAMLGRAPH")"
+LIB_ULEX_DIR="$(mydirname "$CONFIG_LIB_ULEX")"
 
 EXT_LIB="$EXT_LIB"
 EXT_OBJ="$EXT_OBJ"
 EXT_SHARED="$EXT_SHARED"
+EXT_EXE="$EXT_EXE"
 EOF
 
 sed 's/=["(]\(.*\)[)"]$/ := \1/' config.sh > config.make

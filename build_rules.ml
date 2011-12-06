@@ -614,7 +614,9 @@ let stdlib_packages_dir = "stdlib" in
 let opaopt = try Sh(Sys.getenv "OPAOPT") with Not_found -> N in
 
 let opacomp_deps_js = string_list_of_file "opa-run-js-libs.itarget" in
-let opacomp_deps_native = string_list_of_file "opa-run-libs.itarget" in
+
+let obj_extension f = try if windows_mode && Pathname.check_extension f "o" then Pathname.update_extension f "obj" else f with Invalid_argument _ -> f in
+let opacomp_deps_native = List.map obj_extension (string_list_of_file "opa-run-libs.itarget") in
 let opacomp_deps_byte = List.map (fun l -> Pathname.update_extension "cma" l) opacomp_deps_native in
 
 let opacomp_deps_native = opacomp_deps_native @ opacomp_deps_js in

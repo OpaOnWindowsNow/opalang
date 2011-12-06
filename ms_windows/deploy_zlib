@@ -1,0 +1,5 @@
+DEST="/windows_libs/zlib/"
+mkdir -p $DEST
+cp *.{so,dll,a,lib} $DEST
+# because that's how ocamlflex will call it
+cp $DEST/zlib.lib $DEST/libz.lib

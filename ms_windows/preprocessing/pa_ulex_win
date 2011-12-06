@@ -1,0 +1,10 @@
+#! /bin/bash
+# -*- encoding : unix -*-
+#We cannot use the same file as in linux/cygwin here since we need a camlp4 compatible with pa_ulex.cma
+# the pr_o.cmo is here to have source output (not binary ast)
+FILEUNIX=$(echo $1 | sed -e "s/[^0-9a-zA-Z\._/: -]//g") # because it can came from outerspace (windows)
+FILE=$(cygpath -w $FILEUNIX) # and return
+ULEX=$(cygpath -w "$LIB_ULEX_DIR/pa_ulex.cma")
+PR_O=pr_o.cmo
+$OCAML_TARGET_DIR/bin/camlp4o $ULEX $PR_O $FILE | tee $FILEUNIX.pp
+#[ ! -s $FILE.pp ] && echo error pa_ulex_preprocess 1>&2 && exit 3

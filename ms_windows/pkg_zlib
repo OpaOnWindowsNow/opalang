@@ -1,0 +1,10 @@
+VER="1.2.5"
+CVER=$(echo $VER | tr -d ".")
+FILE="zlib$CVER.zip"
+REP="zlib-$VER"
+SITE="http://www.winimage.com/zLibDll/"
+STDREP="zlib"
+EXTRACT="unzip"
+INSTALLDIR="zlib"
+INST="make_zlib.bat"
+#DEPLOY="./deploy_zlib"

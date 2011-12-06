@@ -35,7 +35,7 @@ let md5 = if is_fbsd then P"md5"  else P"md5sum"
  tools for which we call the windows version (and that need some call translation)
 *)
 
-let windows_mode = (os = Win32)
+let windows_mode = (os = Cygwin) && (try (Sys.getenv "ML_STATE_OPA_CYGWIN") <> "true" with _ -> true)
 
 let c_wall,c_werror =
   if windows_mode (*&& compiler=microsoft*) then "/Wall","/Wall"
@@ -499,21 +499,8 @@ let _ = dispatch begin function
 
       (* PB WITH libcrypto.obj MISSING ??? *)
       if windows_mode then (
-        (* openssl *)
-          let flags = S[A"-I";A "/windows_libs/openssl/include";
-                      A"-I";A "/windows_libs/openssl/lib"] in
-          flag ["use_ssl"; "compile"] flags;
-          flag ["use_ssl"; "link"] flags;
-
         (* windows primitives *)
           flag ["ocaml"; "link"] (S [A "Gdi32.lib"; A "User32.lib"]);
-
-        (* zlib *)
-          let flags = S[A"-I";A "/windows_libs/zlib/";
-                        A"-ccopt";A "-L/windows_libs/zlib/"  ] in
-          flag ["use_zip"; "compile"] flags;
-          flag ["use_zip"; "link"] flags;
-
         (* dns *)
           let flags = S[A"-ccopt";A"DnsAPI.Lib"] in
           flag ["use_io";"link"] flags

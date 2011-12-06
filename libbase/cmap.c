@@ -15,7 +15,12 @@
     You should have received a copy of the GNU Affero General Public License
     along with OPA.  If not, see <http://www.gnu.org/licenses/>.
 */
+#include "libbase/mlstate_platform.h"
+#ifdef MLSTATE_WINDOWS
+#include <stdlib.h>
+#else
 #include <unistd.h>
+#endif
 #include <stdio.h>
 #include <caml/mlvalues.h>
 
@@ -25,6 +30,10 @@ value stack_pointer (value v) {
 }
 
 value immediate_exit (value v) {
-  _exit (Long_val(v));
+#ifdef MLSTATE_WINDOWS
+    exit(Long_val(v));
+#else
+   _exit (Long_val(v));
+#endif
   return Val_unit;
 }

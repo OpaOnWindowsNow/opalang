@@ -1,0 +1,9 @@
+VER="1.0.0a"
+CVER=$VER
+FILE="openssl-$CVER.tar.gz"
+REP="openssl-$VER"
+SITE="http://www.openssl.org/source/"
+STDREP="libssl"
+EXTRACT="tar xzvf"
+INST="make_libssl.bat"
+INSTALLDIR=""

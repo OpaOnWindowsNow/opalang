@@ -22,10 +22,7 @@
 
       let mlstate_debug, mlstate_nodebug, pa_ulex =
         if windows_mode then
-          let pp_script s=
-            let win_exists s = try ignore(Unix.stat s);true with _ -> false in (* under cygwin, Unix.*link* does not work *)
-            let location = (Sys.getenv "LIBQML")^"/preprocessing/" in
-            location ^ s ^ ".bat"
+          let pp_script s= ".."/"ms_windows"/"preprocessing"/(s^".bat")
           in
           (* pre-defined wrapper scripts to workaround the "no space in ppdebug string" bug on windows *)
           (* (they do the same as the commands below) *)

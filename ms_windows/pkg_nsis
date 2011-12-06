@@ -1,0 +1,6 @@
+VER="2.46"
+CVER=$VER
+FILE="nsis-$VER-setup.exe"
+SITE="http://switch.dl.sourceforge.net/project/nsis/NSIS%202/$VER/"
+EXTRACT="echo"
+DEPLOY="./deploy_nsis $FILE"

@@ -1,0 +1,7 @@
+#! /bin/bash -ex
+
+mkdir -p $INSTALLDIR
+
+cp -f nasm.exe $INSTALLDIR/nasm.exe
+
+export PATH=$PATH:$INSTALLDIR

@@ -1,0 +1,1 @@
+chmod +x $1; cmd /C "$1"

@@ -257,3 +257,11 @@ clean: book-clean
 
 .PHONY: doc
 doc: doc.html opadoc/doc book
+
+##
+## WINDOWS TARGET
+##
+
+# TODO : move to a proper ocamlbuild target
+ms_windows/windows_gate.exe: ms_windows/windows_gate.ml libbase/pathTransform.ml
+	sh ms_windows/make_windows_gate

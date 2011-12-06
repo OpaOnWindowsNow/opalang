@@ -1,0 +1,5 @@
+#! /bin/bash  
+# -*- encoding : unix -*-
+echo ulex $1 > $1.pp.log
+camlp4o pa_ulex.cma  pr_o.cmo $1 > $1.pp
+cat $1.pp
